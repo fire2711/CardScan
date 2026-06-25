@@ -37,13 +37,12 @@ function parseCardIdentity(rawText) {
   const lines = rawText
     .split('\n')
     .map(l => l.trim())
-    .filter(l => l.length > 1 && !/^[\d\W]+$/.test(l)); // remove pure number/symbol lines
+    .filter(l => l.length > 1 && !/^[\d\W]+$/.test(l));
 
   let game = 'Unknown';
   let cardName = null;
   let set = null;
 
-  // Detect game type from keywords in OCR text
   const fullText = rawText.toLowerCase();
   if (fullText.includes('hp') && (fullText.includes('pokémon') || fullText.includes('pokemon') || fullText.includes('trainer') || fullText.includes('energy'))) {
     game = 'Pokemon';
@@ -53,46 +52,44 @@ function parseCardIdentity(rawText) {
     game = 'Sports';
   }
 
-  // Extract card name based on game type
   if (game === 'Pokemon') {
-    // Pokémon card name is always the first prominent line before "HP"
     for (const line of lines) {
       if (/^[A-Z][a-zA-Z\s\-éÉ]+$/.test(line) && line.length > 2 && !line.toLowerCase().includes('pokémon') && !line.toLowerCase().includes('pokemon')) {
-        cardName = line;
+        // Clean up common OCR errors on Pokemon names
+        cardName = line
+          .replace(/[^a-zA-Z\s\-éÉ]/g, '') // remove non-letter chars
+          .replace(/\s+/g, ' ')
+          .trim();
         break;
       }
     }
-    // Extract set code (e.g. "SV01/198" or "025/165")
-    const setMatch = rawText.match(/\b([A-Z]{2,4})[\s\-]?(\d{3}\/\d{3}|\d+\/\d+)\b/);
-    if (setMatch) set = setMatch[0];
+    // Only use set numbers that make sense (e.g. 025/165, not 199/165)
+    const setMatch = rawText.match(/\b(\d{1,3})\/(\d{3})\b/);
+    if (setMatch && parseInt(setMatch[1]) <= parseInt(setMatch[2])) {
+      set = setMatch[0];
+    }
 
   } else if (game === 'Magic') {
-    // Magic card name is typically the first clean title-case line
     for (const line of lines) {
       if (/^[A-Z][a-zA-Z\s\-',]+$/.test(line) && line.length > 2 && line.split(' ').length <= 6) {
         cardName = line;
         break;
       }
     }
-    // Set symbol number (e.g. "047/287" or collector number)
     const setMatch = rawText.match(/\b\d{1,4}\/\d{1,4}\b/);
     if (setMatch) set = setMatch[0];
 
   } else if (game === 'Sports') {
-    // Sports card player name is the most prominent text
-    // Usually a full name (First Last) in large print
     for (const line of lines) {
       if (/^[A-Z][a-z]+ [A-Z][a-z]+/.test(line) && line.split(' ').length >= 2) {
         cardName = line;
         break;
       }
     }
-    // Year often appears as 4-digit number
     const yearMatch = rawText.match(/\b(19|20)\d{2}\b/);
     if (yearMatch) set = yearMatch[0];
 
   } else {
-    // Generic fallback: first clean alphabetic line that looks like a name
     for (const line of lines) {
       if (/^[A-Z][a-zA-Z\s\-']+$/.test(line) && line.length > 3 && line.split(' ').length <= 5) {
         cardName = line;
@@ -101,7 +98,6 @@ function parseCardIdentity(rawText) {
     }
   }
 
-  // Fallback: just use the first substantial line
   if (!cardName && lines.length > 0) {
     cardName = lines[0].slice(0, 60);
   }
