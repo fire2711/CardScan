@@ -10,6 +10,7 @@ const { lookupPrice } = require('./prices');
 async function scanCard(base64Image, mimeType) {
   // Step 1: OCR
   const rawText = await detectCardText(base64Image, mimeType);
+  console.log('RAW OCR TEXT:', rawText);
   if (!rawText || rawText.trim().length < 3) {
     throw new Error('Could not read any text from the card. Try a clearer photo.');
   }
@@ -57,9 +58,16 @@ function parseCardIdentity(rawText) {
       if (/^[A-Z][a-zA-Z\s\-éÉ]+$/.test(line) && line.length > 2 && !line.toLowerCase().includes('pokémon') && !line.toLowerCase().includes('pokemon')) {
         // Clean up common OCR errors on Pokemon names
         cardName = line
-          .replace(/[^a-zA-Z\s\-éÉ]/g, '') // remove non-letter chars
-          .replace(/\s+/g, ' ')
-          .trim();
+  .replace(/[^a-zA-Z\s\-éÉ]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+// Remove trailing OCR artifacts like 'e', 'ex', 'gx', 'v', 'vmax' that got merged
+cardName = cardName.replace(/\s+(ex|gx|vmax|vstar|v)$/i, ' $1').trim();
+// Fix common single-letter OCR suffix errors (e.g. "Charizarde" → "Charizard")
+cardName = cardName.replace(/([a-z])e$/, (match, p1) => {
+  const knownSuffixes = ['e', 'le', 'se', 're', 'ne', 'te', 've'];
+  return knownSuffixes.some(s => match.endsWith(s)) ? match : p1;
+});
         break;
       }
     }
