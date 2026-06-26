@@ -71,7 +71,7 @@ function parseCardIdentity(rawText) {
     }
 
     // Match collector numbers like 199/165 or 025/207
-    const setMatch = rawText.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
+    const setMatch = rawText.match(/(\d+)\s*\/\s*(\d+)/);
     if (setMatch) {
       set = `${setMatch[1]}/${setMatch[2]}`;
       console.log('Set number found:', set);
