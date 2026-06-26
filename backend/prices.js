@@ -23,7 +23,10 @@ async function lookupPokemon(cardName, set) {
     const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=5`, { headers });
     if (res.ok) {
       const data = await res.json();
-      if (data.data?.length > 0) return buildResult(data.data[0]);
+      if (data.data?.length > 0) {
+        const result = buildResult(data.data[0]);
+        if (result.prices) return result;
+      }
     }
   }
 
@@ -35,23 +38,73 @@ async function lookupPokemon(cardName, set) {
       const data = await res.json();
       const first = cardName.split(' ')[0].toLowerCase();
       const match = data.data?.find(c => c.name.toLowerCase().includes(first));
-      if (match) return buildResult(match);
+      if (match) {
+        const result = buildResult(match);
+        if (result.prices) return result;
+      }
     }
   }
 
   // Strategy 3: name only, most recent with prices
   const q = encodeURIComponent(`name:${cardName}`);
   const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=20&orderBy=-set.releaseDate`, { headers });
-  if (!res.ok) throw new Error(`Pokémon TCG API error: ${res.status}`);
-  const data = await res.json();
-  if (!data.data?.length) return { prices: null, graded: null, cardDetails: null, source: 'Card not found' };
+  if (res.ok) {
+    const data = await res.json();
+    if (data.data?.length > 0) {
+      const card = data.data.find(c => {
+        const p = c.tcgplayer?.prices;
+        return p && Object.keys(p).length > 0;
+      }) || data.data[0];
+      const result = buildResult(card);
+      if (result.prices) return result;
+    }
+  }
 
-  const card = data.data.find(c => {
-    const p = c.tcgplayer?.prices;
-    return p && Object.keys(p).length > 0;
-  }) || data.data[0];
+  // Strategy 4: PriceCharting fallback
+  console.log('Falling back to PriceCharting for:', cardName);
+  return await lookupPriceCharting(cardName, 'pokemon');
+}
 
-  return buildResult(card);
+async function lookupPriceCharting(cardName, category) {
+  try {
+    const q = encodeURIComponent(cardName);
+    const res = await fetch(`https://www.pricecharting.com/api/products?q=${q}&status=in-stock&category=${category}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) throw new Error('PriceCharting error');
+    const data = await res.json();
+    const product = data.products?.[0];
+    if (!product) return { prices: null, graded: null, cardDetails: null, source: 'Price not found' };
+
+    const market = product['cib-price'] ? product['cib-price'] / 100 : null;
+    const loose = product['loose-price'] ? product['loose-price'] / 100 : null;
+    const graded = product['graded-price'] ? product['graded-price'] / 100 : null;
+
+    const price = market || loose;
+    return {
+      prices: price ? {
+        low: loose || price,
+        market: price,
+        high: graded || price * 1.5,
+      } : null,
+      graded: graded ? {
+        psa9: Math.round(graded * 0.7 * 100) / 100,
+        psa10: graded,
+      } : null,
+      cardDetails: {
+        name: product['product-name'] || cardName,
+        rarity: null,
+        set: null,
+        series: null,
+        number: null,
+        releaseDate: null,
+      },
+      source: `PriceCharting · ${product['product-name'] || cardName}`,
+    };
+  } catch (err) {
+    console.error('PriceCharting error:', err.message);
+    return { prices: null, graded: null, cardDetails: null, source: 'Price unavailable' };
+  }
 }
 
 function buildResult(card) {
@@ -88,7 +141,10 @@ async function lookupTcgApi(cardName, game) {
   if (!res.ok) throw new Error(`TCGAPI error: ${res.status}`);
   const data = await res.json();
   const card = data.cards?.[0];
-  if (!card) return { prices: null, graded: null, cardDetails: null, source: 'Card not found' };
+  if (!card) {
+    // Fallback to PriceCharting for sports cards
+    return await lookupPriceCharting(cardName, game === 'Sports' ? 'baseball' : 'magic-the-gathering');
+  }
   return {
     prices: { low: card.prices?.low ?? null, market: card.prices?.market ?? null, high: card.prices?.high ?? null },
     graded: null,
