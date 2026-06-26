@@ -52,7 +52,7 @@ async function lookupPokemon(cardName, set) {
 
   // If we have a collector number, search by name + number (most precise)
   if (collectorNumber) {
-    const query = encodeURIComponent(`name:"${cleanName}*" number:"${collectorNumber}"`);
+    const query = encodeURIComponent(`name:"${cleanName}" number:"${collectorNumber}"`);
     const url = `https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=5&select=name,set,number,tcgplayer`;
     
     const response = await fetch(url, { headers });
@@ -63,9 +63,11 @@ async function lookupPokemon(cardName, set) {
         const tcg = card.tcgplayer?.prices;
         const priceData = tcg?.holofoil || tcg?.normal || tcg?.reverseHolofoil || tcg?.['1stEditionHolofoil'] || null;
         return {
-          prices: priceData ? { low: priceData.low, market: priceData.market, high: priceData.high } : null,
-          source: `pokemontcg.io · ${card.set?.name || ''} #${card.number}`,
-        };
+  prices: priceData ? { 
+    low: priceData.low, 
+    market: priceData.market || priceData.mid, 
+    high: priceData.high 
+  } : null,
       }
     }
   }
