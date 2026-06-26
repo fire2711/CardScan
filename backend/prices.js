@@ -15,50 +15,25 @@ async function lookupPokemon(cardName, set) {
   const headers = { 'Content-Type': 'application/json' };
   if (process.env.POKEMON_TCG_API_KEY) headers['X-Api-Key'] = process.env.POKEMON_TCG_API_KEY;
 
-  // Strip trailing OCR artifact 'e' from names like "Charizarde" → "Charizard"
-  // but keep names that naturally end in 'e' like "Articune" → keep
-  const cleanName = cardName.replace(/([^aeiou])e$/i, '$1').trim();
-  console.log('Clean name:', cleanName, '| Set:', set);
+  const cleanName = cardName.replace(/e$/i, '').trim();
 
-  // Extract just the collector number e.g. "199/165" → "199"
-  const numMatch = set?.match(/^(\d+)/);
-  const collectorNumber = numMatch ? numMatch[1] : null;
-
-  // Strategy 1: name + collector number (most precise)
-  if (collectorNumber) {
-    const q = encodeURIComponent(`name:${cleanName} number:${collectorNumber}`);
-    const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=5`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      console.log(`Strategy 1 (name+number): ${data.data?.length} results`);
-      if (data.data?.length > 0) return buildResult(data.data[0]);
-    }
-  }
-
-  // Strategy 2: collector number only, then match name loosely
-  if (collectorNumber) {
-    const q = encodeURIComponent(`number:${collectorNumber}`);
-    const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=20`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      console.log(`Strategy 2 (number only): ${data.data?.length} results`);
-      const firstWord = cleanName.split(' ')[0].toLowerCase();
-      const match = data.data?.find(c => c.name.toLowerCase().includes(firstWord));
-      if (match) {
-        console.log('Matched by number:', match.name);
-        return buildResult(match);
-      }
-    }
-  }
-
-  // Strategy 3: name only, most recent first
+  // Search by name, get all results sorted by most recent
   const q = encodeURIComponent(`name:${cleanName}`);
-  const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=10&orderBy=-set.releaseDate`, { headers });
+  const res = await fetch(
+    `https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=20&orderBy=-set.releaseDate`,
+    { headers }
+  );
   if (!res.ok) throw new Error(`Pokémon TCG API error: ${res.status}`);
   const data = await res.json();
-  console.log(`Strategy 3 (name only): ${data.data?.length} results`);
-  if (!data.data?.length) return { prices: null, graded: null, cardDetails: null, source: 'pokemontcg.io — card not found' };
-  return buildResult(data.data[0]);
+  if (!data.data?.length) return { prices: null, graded: null, cardDetails: null, source: 'Card not found' };
+
+  // Pick the first card that actually HAS tcgplayer prices
+  const card = data.data.find(c => {
+    const p = c.tcgplayer?.prices;
+    return p && (p.holofoil || p.normal || p.reverseHolofoil);
+  }) || data.data[0];
+
+  return buildResult(card);
 }
 
 function buildResult(card) {
