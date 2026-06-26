@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CardScan Test</title>
+  <style>
+    body { background: #111; color: #fff; font-family: sans-serif; max-width: 520px; margin: 60px auto; padding: 0 20px; }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    p.sub { color: #888; margin-bottom: 24px; }
+    input[type=file] { display: none; }
+    .btn { background: #6c47ff; color: #fff; border: none; padding: 14px 28px; border-radius: 12px; font-size: 16px; cursor: pointer; width: 100%; margin-bottom: 12px; }
+    .btn:hover { background: #5535dd; }
+    img#preview { width: 100%; max-height: 300px; object-fit: contain; border-radius: 12px; margin: 16px 0; display: none; }
+    #result { background: #1a1a1a; border-radius: 12px; padding: 20px; display: none; margin-top: 16px; }
+    .section-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #555; text-transform: uppercase; margin: 16px 0 8px; }
+    .price-row { display: flex; gap: 10px; }
+    .price-box { flex: 1; background: #222; border-radius: 8px; padding: 12px; text-align: center; }
+    .price-box .label { font-size: 11px; color: #666; margin-bottom: 4px; }
+    .price-box .value { font-size: 18px; font-weight: 700; color: #6c47ff; }
+    .price-box.green .value { color: #3ecf8e; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .detail-box { background: #222; border-radius: 8px; padding: 10px 12px; }
+    .detail-box .label { font-size: 11px; color: #555; margin-bottom: 2px; }
+    .detail-box .value { font-size: 13px; font-weight: 600; color: #ccc; }
+    .note { font-size: 11px; color: #444; margin-top: 8px; font-style: italic; }
+    #status { color: #888; font-size: 14px; margin-top: 12px; min-height: 20px; }
+    .error { color: #ff4444; }
+    .source { font-size: 11px; color: #333; margin-top: 14px; }
+  </style>
+</head>
+<body>
+  <h1>🃏 CardScan Tester</h1>
+  <p class="sub">Upload a card photo to test the scan → price pipeline</p>
+
+  <!-- Replace with your Railway URL -->
+  <script>const BACKEND = 'https://cardscan-production-d081.up.railway.app'</script>
+
+  <button class="btn" onclick="document.getElementById('fileInput').click()">📷 Choose Card Photo</button>
+  <input type="file" id="fileInput" accept="image/*">
+  <img id="preview">
+  <div id="status"></div>
+
+  <div id="result">
+    <div style="font-size:12px;color:#666;" id="game-tag"></div>
+    <div style="font-size:22px;font-weight:700;margin:4px 0;" id="card-name"></div>
+
+    <div class="section-title">Raw Card Prices (Ungraded)</div>
+    <div class="price-row">
+      <div class="price-box"><div class="label">Low</div><div class="value" id="price-low">—</div></div>
+      <div class="price-box"><div class="label">Market</div><div class="value" id="price-market">—</div></div>
+      <div class="price-box"><div class="label">High</div><div class="value" id="price-high">—</div></div>
+    </div>
+
+    <div class="section-title">Graded Price Estimates</div>
+    <div class="price-row">
+      <div class="price-box green"><div class="label">PSA 9</div><div class="value" id="price-psa9">—</div></div>
+      <div class="price-box green"><div class="label">PSA 10</div><div class="value" id="price-psa10">—</div></div>
+    </div>
+    <p class="note">* PSA estimates based on typical grading multipliers. Actual prices vary.</p>
+
+    <div class="section-title">Card Details</div>
+    <div class="detail-grid">
+      <div class="detail-box"><div class="label">Name</div><div class="value" id="detail-name">—</div></div>
+      <div class="detail-box"><div class="label">Rarity</div><div class="value" id="detail-rarity">—</div></div>
+      <div class="detail-box"><div class="label">Set</div><div class="value" id="detail-set">—</div></div>
+      <div class="detail-box"><div class="label">Series</div><div class="value" id="detail-series">—</div></div>
+      <div class="detail-box"><div class="label">Number</div><div class="value" id="detail-number">—</div></div>
+      <div class="detail-box"><div class="label">Released</div><div class="value" id="detail-release">—</div></div>
+    </div>
+    <div class="source" id="price-source"></div>
+  </div>
+
+  <script>
+    const fmt = v => v != null ? `$${Number(v).toFixed(2)}` : '—';
+    const set = (id, val) => document.getElementById(id).textContent = val || '—';
+
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      document.getElementById('preview').src = URL.createObjectURL(file);
+      document.getElementById('preview').style.display = 'block';
+      document.getElementById('result').style.display = 'none';
+
+      const status = document.getElementById('status');
+      status.textContent = '⏳ Reading card and fetching prices…';
+      status.className = '';
+
+      const base64 = await new Promise(res => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(',')[1]);
+        r.readAsDataURL(file);
+      });
+
+      try {
+        const response = await fetch(`${BACKEND}/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64, mimeType: file.type || 'image/jpeg' })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Server error');
+
+        console.log('Full response:', data);
+
+        status.textContent = '✅ Done!';
+        set('game-tag', data.game);
+        set('card-name', data.cardDetails?.name || data.cardName);
+        document.getElementById('price-low').textContent = fmt(data.prices?.low);
+        document.getElementById('price-market').textContent = fmt(data.prices?.market);
+        document.getElementById('price-high').textContent = fmt(data.prices?.high);
+        document.getElementById('price-psa9').textContent = fmt(data.graded?.psa9);
+        document.getElementById('price-psa10').textContent = fmt(data.graded?.psa10);
+        set('detail-name', data.cardDetails?.name);
+        set('detail-rarity', data.cardDetails?.rarity);
+        set('detail-set', data.cardDetails?.set);
+        set('detail-series', data.cardDetails?.series);
+        set('detail-number', data.cardDetails?.number);
+        set('detail-release', data.cardDetails?.releaseDate);
+        set('price-source', data.source);
+        document.getElementById('result').style.display = 'block';
+      } catch (err) {
+        status.textContent = '❌ ' + err.message;
+        status.className = 'error';
+      }
+    });
+  </script>
+</body>
+</html>
