@@ -36,46 +36,59 @@ async function lookupPrice(cardName, game, set) {
  * Docs: https://pokemontcg.io
  */
 async function lookupPokemon(cardName, set) {
-  const cleanName = cardName.replace(/e$/i, '').trim(); // strip trailing 'e' OCR artifact
-const query = encodeURIComponent(`name:"${cleanName}*"`);
-  const url = `https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=5&select=name,set,tcgplayer`;
-
   const headers = { 'Content-Type': 'application/json' };
   if (process.env.POKEMON_TCG_API_KEY) {
     headers['X-Api-Key'] = process.env.POKEMON_TCG_API_KEY;
   }
 
+  // Clean name - strip trailing OCR artifact 'e', keep ex/gx/v suffixes
+  let cleanName = cardName
+    .replace(/e$/i, '')
+    .trim();
+
+  // Extract collector number from set string
+  const numMatch = set?.match(/(\d+)\/\d+/);
+  const collectorNumber = numMatch ? numMatch[1] : null;
+
+  // If we have a collector number, search by name + number (most precise)
+  if (collectorNumber) {
+    const query = encodeURIComponent(`name:"${cleanName}*" number:"${collectorNumber}"`);
+    const url = `https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=5&select=name,set,number,tcgplayer`;
+    
+    const response = await fetch(url, { headers });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.data?.length > 0) {
+        const card = data.data[0];
+        const tcg = card.tcgplayer?.prices;
+        const priceData = tcg?.holofoil || tcg?.normal || tcg?.reverseHolofoil || tcg?.['1stEditionHolofoil'] || null;
+        return {
+          prices: priceData ? { low: priceData.low, market: priceData.market, high: priceData.high } : null,
+          source: `pokemontcg.io · ${card.set?.name || ''} #${card.number}`,
+        };
+      }
+    }
+  }
+
+  // Fallback: search by name only, pick most recent set
+  const query = encodeURIComponent(`name:"${cleanName}*"`);
+  const url = `https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=10&orderBy=-set.releaseDate&select=name,set,number,tcgplayer`;
+  
   const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`Pokémon TCG API error: ${response.status}`);
-
+  
   const data = await response.json();
   if (!data.data || data.data.length === 0) {
     return { prices: null, source: 'pokemontcg.io — card not found' };
   }
 
-  // Try to match set if we have it, otherwise use first result
- let card = data.data[0];
-if (set) {
-  // Try to match by collector number first (most precise)
-  const numMatch = set.match(/(\d+)\/(\d+)/);
-  if (numMatch) {
-    const collectorNum = numMatch[1];
-    const match = data.data.find(c => c.number === collectorNum);
-    if (match) card = match;
-  }
-}
-// Prefer most recent card if multiple matches
-const sorted = data.data.sort((a, b) => (b.set?.releaseDate || '').localeCompare(a.set?.releaseDate || ''));
-if (!set) card = sorted[0];
-
+  const card = data.data[0];
   const tcg = card.tcgplayer?.prices;
-  const priceData = tcg?.holofoil || tcg?.normal || tcg?.reverseHolofoil || tcg?.['1stEditionHolofoil'] || null;
+  const priceData = tcg?.holofoil || tcg?.normal || tcg?.reverseHolofoil || null;
 
   return {
-    prices: priceData
-      ? { low: priceData.low, market: priceData.market, high: priceData.high }
-      : null,
-    source: `pokemontcg.io · ${card.set?.name || ''}`,
+    prices: priceData ? { low: priceData.low, market: priceData.market, high: priceData.high } : null,
+    source: `pokemontcg.io · ${card.set?.name || ''} #${card.number}`,
   };
 }
 
