@@ -54,11 +54,19 @@ const query = encodeURIComponent(`name:"${cleanName}*"`);
   }
 
   // Try to match set if we have it, otherwise use first result
-  let card = data.data[0];
-  if (set) {
-    const match = data.data.find(c => c.set?.ptcgoCode === set || c.set?.name?.toLowerCase().includes(set.toLowerCase()));
+ let card = data.data[0];
+if (set) {
+  // Try to match by collector number first (most precise)
+  const numMatch = set.match(/(\d+)\/(\d+)/);
+  if (numMatch) {
+    const collectorNum = numMatch[1];
+    const match = data.data.find(c => c.number === collectorNum);
     if (match) card = match;
   }
+}
+// Prefer most recent card if multiple matches
+const sorted = data.data.sort((a, b) => (b.set?.releaseDate || '').localeCompare(a.set?.releaseDate || ''));
+if (!set) card = sorted[0];
 
   const tcg = card.tcgplayer?.prices;
   const priceData = tcg?.holofoil || tcg?.normal || tcg?.reverseHolofoil || tcg?.['1stEditionHolofoil'] || null;
