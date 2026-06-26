@@ -22,8 +22,8 @@ app.post('/scan', async (req, res) => {
   if (!image) return res.status(400).json({ error: 'No image provided.' });
 
   try {
-    const result = await scanCard(image, mimeType || 'image/jpeg');
-    res.json(result);
+    const rawText = await require('./ocr').detectCardText(image, mimeType || 'image/jpeg');
+res.json({ rawText });
   } catch (err) {
     console.error('Scan error:', err.message);
     res.status(500).json({ error: err.message || 'Failed to scan card.' });
