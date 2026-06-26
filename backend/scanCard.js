@@ -3,19 +3,13 @@ const { lookupPrice } = require('./prices');
 
 async function scanCard(base64Image, mimeType) {
   const rawText = await detectCardText(base64Image, mimeType);
-  console.log('RAW OCR:', rawText);
-
   if (!rawText || rawText.trim().length < 3) {
     throw new Error('Could not read any text from the card. Try a clearer photo.');
   }
-
   const { cardName, game, set } = parseCardIdentity(rawText);
-  console.log('PARSED:', { cardName, game, set });
-
   if (!cardName) {
-    throw new Error('Could not identify the card name. Make sure the card name is clearly visible.');
+    throw new Error('Could not identify the card name.');
   }
-
   const { prices, graded, cardDetails, source } = await lookupPrice(cardName, game, set);
   return { cardName, game, set, prices, graded, cardDetails, source };
 }
@@ -29,7 +23,6 @@ function parseCardIdentity(rawText) {
   let game = 'Unknown';
   let cardName = null;
   let set = null;
-
   const fullText = rawText.toLowerCase();
 
   if (fullText.includes('hp') && (
@@ -60,21 +53,24 @@ function parseCardIdentity(rawText) {
         !line.toLowerCase().includes('pokémon') &&
         !line.toLowerCase().includes('pokemon') &&
         !line.toLowerCase().includes('stage') &&
-        !line.toLowerCase().includes('basic')
+        !line.toLowerCase().includes('basic') &&
+        !line.toLowerCase().includes('evolves')
       ) {
         cardName = line
           .replace(/[^a-zA-Z\s\-éÉ]/g, '')
           .replace(/\s+/g, ' ')
           .trim();
+        // Fix OCR artifact: 'ex' logo merges as letter 'e' at end of name
+        // "Charizarde" → "Charizard", but keep "Venusaur", "Articuno" etc
+        cardName = cardName.replace(/([^aeiou\s])e$/i, '$1');
         break;
       }
     }
 
-    // Match collector numbers like 199/165 or 025/207
-    const setMatch = rawText.match(/(\d+)\s*\/\s*(\d+)/);
+    // Find collector number like "199/165" anywhere in text
+    const setMatch = rawText.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
     if (setMatch) {
       set = `${setMatch[1]}/${setMatch[2]}`;
-      console.log('Set number found:', set);
     }
 
   } else if (game === 'Magic') {
@@ -107,7 +103,6 @@ function parseCardIdentity(rawText) {
   }
 
   if (!cardName && lines.length > 0) cardName = lines[0].slice(0, 60);
-
   return { cardName, game, set };
 }
 
