@@ -36,7 +36,8 @@ async function lookupPrice(cardName, game, set) {
  * Docs: https://pokemontcg.io
  */
 async function lookupPokemon(cardName, set) {
-  const query = encodeURIComponent(`name:"${cardName}"`);
+  const cleanName = cardName.replace(/e$/i, '').trim(); // strip trailing 'e' OCR artifact
+const query = encodeURIComponent(`name:"${cleanName}*"`);
   const url = `https://api.pokemontcg.io/v2/cards?q=${query}&pageSize=5&select=name,set,tcgplayer`;
 
   const headers = { 'Content-Type': 'application/json' };
