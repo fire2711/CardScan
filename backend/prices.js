@@ -28,7 +28,12 @@ async function lookupPokemon(cardName, set) {
   if (!data.data?.length) return { prices: null, graded: null, cardDetails: null, source: 'Card not found' };
 
   // Pick the first card that actually HAS tcgplayer prices
-  const card = data.data.find(c => {
+  const cleanedForMatch = cleanName.toLowerCase();
+const card = data.data.find(c => 
+  c.name.toLowerCase() === cleanedForMatch + ' ex' ||
+  c.name.toLowerCase() === cleanedForMatch ||
+  c.name.toLowerCase().startsWith(cleanedForMatch)
+) || data.data.find(c => {
     const p = c.tcgplayer?.prices;
     return p && (p.holofoil || p.normal || p.reverseHolofoil);
   }) || data.data[0];

@@ -101,7 +101,7 @@
         if (!response.ok) throw new Error(data.error || 'Server error');
 
         console.log('Full response:', data);
-        
+        alert(JSON.stringify(data));
         status.textContent = '✅ Done!';
         set('game-tag', data.game);
         set('card-name', data.cardDetails?.name || data.cardName);
