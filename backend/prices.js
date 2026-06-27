@@ -15,12 +15,37 @@ async function lookupPokemon(cardName, set) {
   if (process.env.POKEMON_TCG_API_KEY) headers['X-Api-Key'] = process.env.POKEMON_TCG_API_KEY;
 
   const isPromo = set?.startsWith('promo-');
-  const numMatch = isPromo
-    ? [null, set.replace('promo-', '')]
-    : set?.match(/^(\d+)/);
-  const collectorNumber = numMatch ? numMatch[1] : null;
+  const rawNumber = isPromo ? set.replace('promo-', '') : set?.match(/^(\d+)/)?.[1];
+  const collectorNumber = rawNumber ? String(parseInt(rawNumber)) : null; // strips leading zeros: "048" → "48"
 
-  // Strategy 1: name + number (standard cards)
+  console.log(`Lookup: name="${cardName}" set="${set}" isPromo=${isPromo} number="${collectorNumber}"`);
+
+  // PROMO PATH: search svp set directly first
+  if (isPromo && collectorNumber) {
+    const promoSets = ['svp', 'swsh35', 'sm35', 'xy35', 'bwp'];
+    for (const setId of promoSets) {
+      const q = encodeURIComponent(`name:${cardName} set.id:${setId}`);
+      const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=20`, { headers });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data.data?.length) continue;
+      // Find by number
+      const match = data.data.find(c => String(parseInt(c.number)) === collectorNumber);
+      if (match) {
+        console.log(`Found promo: ${match.name} #${match.number} in ${setId}`);
+        return buildResult(match);
+      }
+    }
+    // Fallback: just return first result from svp with that name
+    const q = encodeURIComponent(`name:${cardName} set.id:svp`);
+    const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=5`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.data?.length > 0) return buildResult(data.data[0]);
+    }
+  }
+
+  // STANDARD PATH: name + number
   if (collectorNumber && !isPromo) {
     const q = encodeURIComponent(`name:${cardName} number:${collectorNumber}`);
     const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=5`, { headers });
@@ -31,63 +56,22 @@ async function lookupPokemon(cardName, set) {
         if (result.prices) return result;
       }
     }
-  }
 
-  // Strategy 1.5: promo cards — search by name + subtypes:promo
-  if (isPromo && collectorNumber) {
-    // Try direct promo lookup by name and number
-    const q = encodeURIComponent(`name:${cardName} number:${collectorNumber}`);
-    const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=10`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.data?.length > 0) {
-        const result = buildResult(data.data[0]);
-        if (result.prices) return result;
-      }
-    }
-
-    // Also try searching promo sets specifically
-    const q2 = encodeURIComponent(`name:${cardName} subtypes:Basic`);
-    const res2 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(`name:${cardName} set.id:svp`)}&pageSize=10`, { headers });
+    // Number only, match name loosely
+    const q2 = encodeURIComponent(`number:${collectorNumber}`);
+    const res2 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q2}&pageSize=20`, { headers });
     if (res2.ok) {
       const data2 = await res2.json();
-      const match = data2.data?.find(c => c.number === collectorNumber || c.number === String(parseInt(collectorNumber)));
+      const first = cardName.split(' ')[0].toLowerCase();
+      const match = data2.data?.find(c => c.name.toLowerCase().includes(first));
       if (match) {
         const result = buildResult(match);
-        if (result.prices) return result;
-      }
-      // No exact number match — use first result from promo set
-      if (data2.data?.length > 0) {
-        const result = buildResult(data2.data[0]);
         if (result.prices) return result;
       }
     }
   }
 
-  // Strategy 2: number only, match name loosely
-  if (collectorNumber) {
-    const q = encodeURIComponent(`number:${collectorNumber}`);
-    const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=20`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      const first = cardName.split(' ')[0].toLowerCase();
-      const match = data.data?.find(c => c.name.toLowerCase().includes(first));
-      if (match) {
-        const result = buildResult(match);
-        if (result.prices) return result;
-      }
-    }
-  }
-  if (isPromo) {
-  const promoNum = String(parseInt(collectorNumber)); // "048" → "48"
-  const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(`name:${cardName} set.id:svp`)}&pageSize=10`, { headers });
-  if (res.ok) {
-    const data = await res.json();
-    const match = data.data?.find(c => c.number === promoNum) || data.data?.[0];
-    if (match) return buildResult(match);
-  }
-}
-  // Strategy 3: name only, most recent with prices
+  // NAME ONLY fallback — most recent with prices
   const q = encodeURIComponent(`name:${cardName}`);
   const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=20&orderBy=-set.releaseDate`, { headers });
   if (res.ok) {
@@ -97,12 +81,11 @@ async function lookupPokemon(cardName, set) {
         const p = c.tcgplayer?.prices;
         return p && Object.keys(p).length > 0;
       }) || data.data[0];
-      const result = buildResult(card);
-      if (result.prices) return result;
+      return buildResult(card);
     }
   }
 
-  return { prices: null, graded: null, cardDetails: null, source: 'Price unavailable — card not found' };
+  return { prices: null, graded: null, cardDetails: null, source: 'Card not found' };
 }
 
 function buildResult(card) {
