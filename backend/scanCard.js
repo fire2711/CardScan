@@ -133,10 +133,17 @@ function parseCardIdentity(rawText) {
     }
 
     // Find collector number like "199/165" anywhere in text
-    const setMatch = rawText.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
-    if (setMatch) {
-      set = `${setMatch[1]}/${setMatch[2]}`;
-    }
+    // Standard collector number e.g. 199/165
+const setMatch = rawText.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
+if (setMatch) {
+  set = `${setMatch[1]}/${setMatch[2]}`;
+} else {
+  // Promo format e.g. "SVP EN 048" or "SWSH 045"
+  const promoMatch = rawText.match(/\b(SVP|SWSH|SM|XY|BW)\s*(?:EN|JP)?\s*(\d{2,3})\b/i);
+  if (promoMatch) {
+    set = `promo-${promoMatch[2]}`;
+  }
+}
 
   } else if (game === 'Magic') {
     for (const line of lines) {
