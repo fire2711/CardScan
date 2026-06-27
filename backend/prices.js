@@ -14,8 +14,10 @@ async function lookupPokemon(cardName, set) {
   const headers = {};
   if (process.env.POKEMON_TCG_API_KEY) headers['X-Api-Key'] = process.env.POKEMON_TCG_API_KEY;
 
-  const numMatch = set?.match(/^(\d+)/);
-  const collectorNumber = numMatch ? numMatch[1] : null;
+  const numMatch = set?.startsWith('promo-') 
+  ? [null, set.replace('promo-', '')] 
+  : set?.match(/^(\d+)/);
+const collectorNumber = numMatch ? numMatch[1] : null;
 
   // Strategy 1: name + number
   if (collectorNumber) {
