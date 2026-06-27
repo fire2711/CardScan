@@ -14,19 +14,51 @@ async function lookupPokemon(cardName, set) {
   const headers = {};
   if (process.env.POKEMON_TCG_API_KEY) headers['X-Api-Key'] = process.env.POKEMON_TCG_API_KEY;
 
-  const numMatch = set?.startsWith('promo-') 
-  ? [null, set.replace('promo-', '')] 
-  : set?.match(/^(\d+)/);
-const collectorNumber = numMatch ? numMatch[1] : null;
+  const isPromo = set?.startsWith('promo-');
+  const numMatch = isPromo
+    ? [null, set.replace('promo-', '')]
+    : set?.match(/^(\d+)/);
+  const collectorNumber = numMatch ? numMatch[1] : null;
 
-  // Strategy 1: name + number
-  if (collectorNumber) {
+  // Strategy 1: name + number (standard cards)
+  if (collectorNumber && !isPromo) {
     const q = encodeURIComponent(`name:${cardName} number:${collectorNumber}`);
     const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=5`, { headers });
     if (res.ok) {
       const data = await res.json();
       if (data.data?.length > 0) {
         const result = buildResult(data.data[0]);
+        if (result.prices) return result;
+      }
+    }
+  }
+
+  // Strategy 1.5: promo cards — search by name + subtypes:promo
+  if (isPromo && collectorNumber) {
+    // Try direct promo lookup by name and number
+    const q = encodeURIComponent(`name:${cardName} number:${collectorNumber}`);
+    const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=10`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.data?.length > 0) {
+        const result = buildResult(data.data[0]);
+        if (result.prices) return result;
+      }
+    }
+
+    // Also try searching promo sets specifically
+    const q2 = encodeURIComponent(`name:${cardName} subtypes:Basic`);
+    const res2 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(`name:${cardName} set.id:svp`)}&pageSize=10`, { headers });
+    if (res2.ok) {
+      const data2 = await res2.json();
+      const match = data2.data?.find(c => c.number === collectorNumber || c.number === String(parseInt(collectorNumber)));
+      if (match) {
+        const result = buildResult(match);
+        if (result.prices) return result;
+      }
+      // No exact number match — use first result from promo set
+      if (data2.data?.length > 0) {
+        const result = buildResult(data2.data[0]);
         if (result.prices) return result;
       }
     }
@@ -62,51 +94,7 @@ const collectorNumber = numMatch ? numMatch[1] : null;
     }
   }
 
-  // Strategy 4: PriceCharting fallback
-  console.log('Falling back to PriceCharting for:', cardName);
-  return await lookupPriceCharting(cardName, 'pokemon');
-}
-
-async function lookupPriceCharting(cardName, category) {
-  try {
-    const q = encodeURIComponent(cardName);
-    const res = await fetch(`https://www.pricecharting.com/api/products?q=${q}&status=in-stock&category=${category}`, {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!res.ok) throw new Error('PriceCharting error');
-    const data = await res.json();
-    const product = data.products?.[0];
-    if (!product) return { prices: null, graded: null, cardDetails: null, source: 'Price not found' };
-
-    const market = product['cib-price'] ? product['cib-price'] / 100 : null;
-    const loose = product['loose-price'] ? product['loose-price'] / 100 : null;
-    const graded = product['graded-price'] ? product['graded-price'] / 100 : null;
-
-    const price = market || loose;
-    return {
-      prices: price ? {
-        low: loose || price,
-        market: price,
-        high: graded || price * 1.5,
-      } : null,
-      graded: graded ? {
-        psa9: Math.round(graded * 0.7 * 100) / 100,
-        psa10: graded,
-      } : null,
-      cardDetails: {
-        name: product['product-name'] || cardName,
-        rarity: null,
-        set: null,
-        series: null,
-        number: null,
-        releaseDate: null,
-      },
-      source: `PriceCharting · ${product['product-name'] || cardName}`,
-    };
-  } catch (err) {
-    console.error('PriceCharting error:', err.message);
-    return { prices: null, graded: null, cardDetails: null, source: 'Price unavailable' };
-  }
+  return { prices: null, graded: null, cardDetails: null, source: 'Price unavailable — card not found' };
 }
 
 function buildResult(card) {
@@ -143,10 +131,7 @@ async function lookupTcgApi(cardName, game) {
   if (!res.ok) throw new Error(`TCGAPI error: ${res.status}`);
   const data = await res.json();
   const card = data.cards?.[0];
-  if (!card) {
-    // Fallback to PriceCharting for sports cards
-    return await lookupPriceCharting(cardName, game === 'Sports' ? 'baseball' : 'magic-the-gathering');
-  }
+  if (!card) return { prices: null, graded: null, cardDetails: null, source: 'Card not found' };
   return {
     prices: { low: card.prices?.low ?? null, market: card.prices?.market ?? null, high: card.prices?.high ?? null },
     graded: null,

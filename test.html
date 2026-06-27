@@ -24,14 +24,16 @@
     .note { font-size: 11px; color: #444; margin-top: 8px; font-style: italic; }
     #status { color: #888; font-size: 14px; margin-top: 12px; min-height: 20px; }
     .error { color: #ff4444; }
-    .source { font-size: 11px; color: #333; margin-top: 14px; }
+    .source { font-size: 11px; color: #555; margin-top: 14px; line-height: 1.8; }
+    .links { display: flex; gap: 10px; margin-top: 16px; }
+    .link-btn { flex: 1; background: #222; border: 1px solid #333; color: #6c47ff; text-decoration: none; padding: 10px; border-radius: 8px; text-align: center; font-size: 13px; font-weight: 600; }
+    .link-btn:hover { background: #2a2a2a; }
   </style>
 </head>
 <body>
   <h1>🃏 CardScan Tester</h1>
   <p class="sub">Upload a card photo to test the scan → price pipeline</p>
 
-  <!-- Replace with your Railway URL -->
   <script>const BACKEND = 'https://cardscan-production-a44e.up.railway.app'</script>
 
   <button class="btn" onclick="document.getElementById('fileInput').click()">📷 Choose Card Photo</button>
@@ -66,12 +68,18 @@
       <div class="detail-box"><div class="label">Number</div><div class="value" id="detail-number">—</div></div>
       <div class="detail-box"><div class="label">Released</div><div class="value" id="detail-release">—</div></div>
     </div>
+
     <div class="source" id="price-source"></div>
+
+    <div class="links">
+      <a id="tcg-link" class="link-btn" href="#" target="_blank">🔗 TCGPlayer</a>
+      <a id="pc-link" class="link-btn" href="#" target="_blank">🔗 PriceCharting</a>
+    </div>
   </div>
 
   <script>
     const fmt = v => v != null ? `$${Number(v).toFixed(2)}` : '—';
-    const set = (id, val) => document.getElementById(id).textContent = val || '—';
+    const setEl = (id, val) => document.getElementById(id).textContent = val || '—';
 
     document.getElementById('fileInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
@@ -101,22 +109,35 @@
         if (!response.ok) throw new Error(data.error || 'Server error');
 
         console.log('Full response:', data);
-        alert(JSON.stringify(data));
+
         status.textContent = '✅ Done!';
-        set('game-tag', data.game);
-        set('card-name', data.cardDetails?.name || data.cardName);
+        setEl('game-tag', data.game);
+        setEl('card-name', data.cardDetails?.name || data.cardName);
         document.getElementById('price-low').textContent = fmt(data.prices?.low);
         document.getElementById('price-market').textContent = fmt(data.prices?.market);
         document.getElementById('price-high').textContent = fmt(data.prices?.high);
         document.getElementById('price-psa9').textContent = fmt(data.graded?.psa9);
         document.getElementById('price-psa10').textContent = fmt(data.graded?.psa10);
-        set('detail-name', data.cardDetails?.name);
-        set('detail-rarity', data.cardDetails?.rarity);
-        set('detail-set', data.cardDetails?.set);
-        set('detail-series', data.cardDetails?.series);
-        set('detail-number', data.cardDetails?.number);
-        set('detail-release', data.cardDetails?.releaseDate);
-        set('price-source', data.source);
+        setEl('detail-name', data.cardDetails?.name);
+        setEl('detail-rarity', data.cardDetails?.rarity);
+        setEl('detail-set', data.cardDetails?.set);
+        setEl('detail-series', data.cardDetails?.series);
+        setEl('detail-number', data.cardDetails?.number);
+        setEl('detail-release', data.cardDetails?.releaseDate);
+        setEl('price-source', data.source);
+
+        // Build lookup links using card name + set info
+        const name = data.cardDetails?.name || data.cardName || '';
+        const setName = data.cardDetails?.set || '';
+        const number = data.cardDetails?.number || '';
+        const tcgQuery = encodeURIComponent(`${name} ${setName}`.trim());
+        const pcQuery = encodeURIComponent(`${name} ${number} pokemon`.trim());
+
+        document.getElementById('tcg-link').href =
+          `https://www.tcgplayer.com/search/pokemon/product?q=${tcgQuery}&view=grid`;
+        document.getElementById('pc-link').href =
+          `https://www.pricecharting.com/search-products?q=${pcQuery}&type=prices`;
+
         document.getElementById('result').style.display = 'block';
       } catch (err) {
         status.textContent = '❌ ' + err.message;
