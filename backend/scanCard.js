@@ -14,17 +14,62 @@ async function scanCard(base64Image, mimeType) {
   return { cardName, game, set, prices, graded, cardDetails, source };
 }
 
+// Words that appear on cards but are never part of a card name
+const EXCLUDED_WORDS = [
+  'pokemon', 'pokémon', 'stage', 'basic', 'evolves', 'evolution',
+  'ability', 'attack', 'trainer', 'supporter', 'stadium', 'item',
+  'discard', 'damage', 'energy', 'retreat', 'weakness', 'resistance',
+  'during', 'your turn', 'when your', 'this pokemon', 'opponent',
+  'mega-evolved', 'mega evolved', 'form of', 'prize card',
+  'knocked out', 'paralyzed', 'confused', 'asleep', 'burned',
+  'poisoned', 'switch', 'attach', 'search', 'shuffle', 'draw',
+  'flip a coin', 'heads', 'tails', 'benched', 'active',
+  'once during', 'may use', 'rule box', 'regulation',
+  'illustrated', 'copyright', 'nintendo', 'creatures', 'game freak',
+  'special condition', 'ancient trait', 'held item',
+];
+
+function isExcludedLine(line) {
+  const lower = line.toLowerCase();
+  return EXCLUDED_WORDS.some(w => lower.includes(w));
+}
+
+// Known Pokémon name suffixes that should be preserved
+const NAME_SUFFIXES = [' ex', ' gx', ' v', ' vmax', ' vstar', ' mega', ' break'];
+
+function cleanPokemonName(name) {
+  // Check if name ends with a known suffix
+  const lowerName = name.toLowerCase();
+  const suffix = NAME_SUFFIXES.find(s => lowerName.endsWith(s));
+
+  if (suffix) {
+    // Has a valid suffix — don't strip anything
+    return name.trim();
+  }
+
+  // No suffix — strip trailing OCR artifact 'e' from ex logo
+  // But preserve natural name endings: le, re, se, ne, te, ve, ke, ze, ce, ge, de, me, pe
+  const naturalEndings = ['le', 're', 'se', 'ne', 've', 'ke', 'ze', 'ce', 'ge', 'me', 'pe', 'be', 'fe'];
+  const lower = name.toLowerCase();
+  if (!naturalEndings.some(e => lower.endsWith(e))) {
+    name = name.replace(/([^aeiou\s])e$/i, '$1');
+  }
+
+  return name.trim();
+}
+
 function parseCardIdentity(rawText) {
   const lines = rawText
     .split('\n')
     .map(l => l.trim())
-    .filter(l => l.length > 1 && !/^[\d\W]+$/.test(l));
+    .filter(l => l.length > 1);
 
   let game = 'Unknown';
   let cardName = null;
   let set = null;
   const fullText = rawText.toLowerCase();
 
+  // Detect game type
   if (fullText.includes('hp') && (
     fullText.includes('pokémon') || fullText.includes('pokemon') ||
     fullText.includes('trainer') || fullText.includes('energy')
@@ -46,27 +91,43 @@ function parseCardIdentity(rawText) {
   }
 
   if (game === 'Pokemon') {
+    // Strategy: find the card name which is always near the top,
+    // starts with a capital letter, and is not excluded text.
+    // Also handle "Mega Dragonite ex" type names which span multiple tokens.
+
     for (const line of lines) {
-      if (
-        /^[A-Z][a-zA-Z\s\-éÉ]+$/.test(line) &&
-        line.length > 2 &&
-        !line.toLowerCase().includes('pokémon') &&
-        !line.toLowerCase().includes('pokemon') &&
-        !line.toLowerCase().includes('stage') &&
-        !line.toLowerCase().includes('basic') &&
-        !line.toLowerCase().includes('evolves')
-      ) {
-        cardName = line
-          .replace(/[^a-zA-Z\s\-éÉ]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        // Fix OCR artifact: 'ex' logo merges as letter 'e' at end of name
-        // "Charizarde" → "Charizard", but keep "Venusaur", "Articuno" etc
-        const keepE = ['tle', 'rtle', 'irl', 'ble', 'gle', 'nce', 'ase', 'ose', 'use', 'ise'];
-const lower = cardName.toLowerCase();
-if (!keepE.some(e => lower.endsWith(e))) {
-  cardName = cardName.replace(/([^aeiou\s])e$/i, '$1');
-}
+      const trimmed = line.trim();
+
+      // Skip short lines, pure numbers/symbols
+      if (trimmed.length < 2) continue;
+      if (/^[\d\W]+$/.test(trimmed)) continue;
+
+      // Skip lines that are clearly not a name
+      if (isExcludedLine(trimmed)) continue;
+
+      // Skip lines that look like HP values e.g. "HP 330" or "330"
+      if (/^\d+$/.test(trimmed)) continue;
+      if (/^hp\s*\d+$/i.test(trimmed)) continue;
+
+      // Skip lines that are too long to be a card name (> 5 words)
+      if (trimmed.split(/\s+/).length > 5) continue;
+
+      // Must start with a capital letter
+      if (!/^[A-ZÀ-Ö]/.test(trimmed)) continue;
+
+      // Clean up the line - remove non-name characters but keep spaces and hyphens
+      let candidate = trimmed
+        .replace(/[^a-zA-Z\s\-éÉàÀ]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (candidate.length < 2) continue;
+
+      // Apply name cleaning
+      candidate = cleanPokemonName(candidate);
+
+      if (candidate.length >= 2) {
+        cardName = candidate;
         break;
       }
     }
