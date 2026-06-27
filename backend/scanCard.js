@@ -62,7 +62,11 @@ function parseCardIdentity(rawText) {
           .trim();
         // Fix OCR artifact: 'ex' logo merges as letter 'e' at end of name
         // "Charizarde" → "Charizard", but keep "Venusaur", "Articuno" etc
-        cardName = cardName.replace(/([^aeiou\s])e$/i, '$1');
+        const keepE = ['tle', 'rtle', 'irl', 'ble', 'gle', 'nce', 'ase', 'ose', 'use', 'ise'];
+const lower = cardName.toLowerCase();
+if (!keepE.some(e => lower.endsWith(e))) {
+  cardName = cardName.replace(/([^aeiou\s])e$/i, '$1');
+}
         break;
       }
     }
