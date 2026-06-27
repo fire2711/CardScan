@@ -78,7 +78,15 @@ async function lookupPokemon(cardName, set) {
       }
     }
   }
-
+  if (isPromo) {
+  const promoNum = String(parseInt(collectorNumber)); // "048" → "48"
+  const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(`name:${cardName} set.id:svp`)}&pageSize=10`, { headers });
+  if (res.ok) {
+    const data = await res.json();
+    const match = data.data?.find(c => c.number === promoNum) || data.data?.[0];
+    if (match) return buildResult(match);
+  }
+}
   // Strategy 3: name only, most recent with prices
   const q = encodeURIComponent(`name:${cardName}`);
   const res = await fetch(`https://api.pokemontcg.io/v2/cards?q=${q}&pageSize=20&orderBy=-set.releaseDate`, { headers });
