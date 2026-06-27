@@ -15,7 +15,7 @@ app.post('/scan', async (req, res) => {
   if (!image) return res.status(400).json({ error: 'No image provided.' });
   try {
     const result = await scanCard(image, mimeType || 'image/jpeg');
-    res.json(result);
+    res.json({ ...result, _debug: { set: result.set, cardName: result.cardName } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
