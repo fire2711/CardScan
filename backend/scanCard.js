@@ -3,16 +3,10 @@ const { lookupPrice } = require('./prices');
 
 async function scanCard(base64Image, mimeType) {
   const rawText = await detectCardText(base64Image, mimeType);
-  console.log('=== RAW OCR ===');
-  console.log(rawText);
-  console.log('=== END OCR ===');
-
   if (!rawText || rawText.trim().length < 3) {
     throw new Error('Could not read any text from the card. Try a clearer photo.');
   }
   const { cardName, game, set } = parseCardIdentity(rawText);
-  console.log('PARSED:', { cardName, game, set });
-
   if (!cardName) {
     throw new Error('Could not identify the card name.');
   }
@@ -113,31 +107,27 @@ function parseCardIdentity(rawText) {
     const setMatch = rawText.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
     if (setMatch) {
       set = `${setMatch[1]}/${setMatch[2]}`;
-      console.log('Standard set found:', set);
     } else {
-      // Try every possible promo pattern
+      // Promo patterns — handles GSVP, SVP, G SVP etc
       const promoPatterns = [
-        /\b(SVP)\s*(?:EN|JP|en|jp)?\s*(\d{2,3})\b/i,
-        /\b(SWSH)\s*(\d{2,3})\b/i,
-        /\b(SM)\s*(\d{2,3})\b/i,
-        /\b(XY)\s*(\d{2,3})\b/i,
-        /\b(BW)\s*(\d{2,3})\b/i,
-        /\bPR-SV\s*(\d{2,3})\b/i,
-        /\bG\s+SVP\s*(?:en|EN)?\s*(\d{2,3})\b/i,
+        { regex: /G?SVP\s*(?:EN|JP|en|jp)?\s*(\d{2,3})/i, group: 1 },
+        { regex: /GSVP\s*(\d{2,3})/i, group: 1 },
+        { regex: /\bSWSH\s*(\d{2,3})\b/i, group: 1 },
+        { regex: /\bSM\s*(\d{2,3})\b/i, group: 1 },
+        { regex: /\bXY\s*(\d{2,3})\b/i, group: 1 },
+        { regex: /\bBW\s*(\d{2,3})\b/i, group: 1 },
+        { regex: /PR-SV\s*(\d{2,3})/i, group: 1 },
       ];
 
-      for (const pattern of promoPatterns) {
-        const match = rawText.match(pattern);
+      for (const { regex, group } of promoPatterns) {
+        const match = rawText.match(regex);
         if (match) {
-          const num = match[2] || match[1];
-          set = `promo-${num}`;
-          console.log('Promo set found:', set, 'from pattern:', pattern);
+          set = `promo-${match[group]}`;
           break;
         }
       }
-
-      if (!set) console.log('No set number found in OCR text');
     }
+
   } else if (game === 'Magic') {
     for (const line of lines) {
       if (/^[A-Z][a-zA-Z\s\-',]+$/.test(line) && line.length > 2 && line.split(' ').length <= 6) {
