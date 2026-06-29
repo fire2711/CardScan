@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
   View,
   Text,
@@ -24,10 +25,9 @@ export default function ScanScreen({ navigation }) {
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-  mediaTypes: ImagePicker.MediaType.Images,
+  const result = await ImagePicker.launchCameraAsync({
+  mediaTypes: 'Images',
   quality: 0.6,
-  base64: true,
 });
 
     if (!result.canceled) {
@@ -37,71 +37,69 @@ export default function ScanScreen({ navigation }) {
 
   async function openGallery() {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: .6,
-      base64: true,
-    });
+  mediaTypes: 'Images',
+  quality: 1,
+});
 
     if (!result.canceled) {
       handleImage(result.assets[0]);
     }
   }
 
-  async function handleImage(asset) {
-    try {
-      setImage(asset.uri);
-      setLoading(true);
+async function handleImage(asset) {
+  try {
+    setImage(asset.uri);
+    setLoading(true);
 
-      if (!asset.base64) {
-        throw new Error('No image data found. Try again.');
-      }
+    console.log('Converting image to base64...');
+    console.log(FileSystem);
+    console.log(FileSystem.EncodingType);
+    const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+  encoding: 'base64',
+});
 
-      console.log('Sending image to backend...');
+    console.log('Sending image to backend...');
 
-      const response = await fetch(`${BACKEND_URL}/scan`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          base64Image: asset.base64,
-          mimeType: asset.mimeType || 'image/jpeg',
-        }),
-      });
+    const response = await fetch(`${BACKEND_URL}/scan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        base64Image: base64,
+        mimeType: asset.mimeType || 'image/jpeg',
+      }),
+    });
 
-      const text = await response.text();
+    const text = await response.text();
 
-      console.log('RAW RESPONSE:', text);
+console.log("STATUS:", response.status);
+console.log("RAW RESPONSE:", text);
 
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        throw new Error('Server returned invalid JSON');
-      }
+if (!response.ok) {
+  throw new Error(text);
+}
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Server error');
-      }
+const data = JSON.parse(text);
 
-      navigation.navigate('Result', {
-        result: data,
-        imageUri: asset.uri,
-      });
+    navigation.navigate('Result', {
+      result: data,
+      imageUri: asset.uri,
+    });
 
-    } catch (err) {
-      console.log('SCAN ERROR:', err);
+  } catch (err) {
+    console.log('SCAN ERROR:', err);
 
-      Alert.alert(
-        'Could not scan card',
-        err.message || 'Try a clearer photo with better lighting.'
-      );
+    Alert.alert(
+      'Could not scan card',
+      err.message || 'Try a clearer photo.'
+    );
 
-    } finally {
-      setLoading(false);
-      setImage(null);
-    }
+  } finally {
+    setLoading(false);
+    setImage(null);
   }
+}
 
   return (
     <View style={styles.container}>
