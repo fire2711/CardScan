@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  Image, ActivityIndicator, Alert, ScrollView
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-const BACKEND_URL = 'https://cardscan-production-d081.up.railway.app'; // ← replace after deploying backend
+const BACKEND_URL = 'https://cardscan-production-a44e.up.railway.app';
 
 export default function ScanScreen({ navigation }) {
   const [image, setImage] = useState(null);
@@ -13,46 +18,85 @@ export default function ScanScreen({ navigation }) {
 
   async function openCamera() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow camera access in Settings.');
+      Alert.alert('Permission needed', 'Please allow camera access.');
       return;
     }
+
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      base64: true,
-    });
-    if (!result.canceled) handleImage(result.assets[0]);
+  mediaTypes: ImagePicker.MediaType.Images,
+  quality: 0.6,
+  base64: true,
+});
+
+    if (!result.canceled) {
+      handleImage(result.assets[0]);
+    }
   }
 
   async function openGallery() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
+      quality: .6,
       base64: true,
     });
-    if (!result.canceled) handleImage(result.assets[0]);
+
+    if (!result.canceled) {
+      handleImage(result.assets[0]);
+    }
   }
 
   async function handleImage(asset) {
-    setImage(asset.uri);
-    setLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/scan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: asset.base64, mimeType: asset.mimeType || 'image/jpeg' }),
-      });
+      setImage(asset.uri);
+      setLoading(true);
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Server error');
+      if (!asset.base64) {
+        throw new Error('No image data found. Try again.');
       }
 
-      const data = await response.json();
-      navigation.navigate('Result', { result: data, imageUri: asset.uri });
+      console.log('Sending image to backend...');
+
+      const response = await fetch(`${BACKEND_URL}/scan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          base64Image: asset.base64,
+          mimeType: asset.mimeType || 'image/jpeg',
+        }),
+      });
+
+      const text = await response.text();
+
+      console.log('RAW RESPONSE:', text);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error('Server returned invalid JSON');
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Server error');
+      }
+
+      navigation.navigate('Result', {
+        result: data,
+        imageUri: asset.uri,
+      });
+
     } catch (err) {
-      Alert.alert('Could not scan card', err.message || 'Make sure the card text is visible and try again.');
+      console.log('SCAN ERROR:', err);
+
+      Alert.alert(
+        'Could not scan card',
+        err.message || 'Try a clearer photo with better lighting.'
+      );
+
     } finally {
       setLoading(false);
       setImage(null);
@@ -63,29 +107,37 @@ export default function ScanScreen({ navigation }) {
     <View style={styles.container}>
       {loading ? (
         <View style={styles.loadingBox}>
-          {image && <Image source={{ uri: image }} style={styles.preview} />}
+          {image && (
+            <Image source={{ uri: image }} style={styles.preview} />
+          )}
+
           <ActivityIndicator size="large" color="#6c47ff" style={{ marginTop: 24 }} />
+
           <Text style={styles.loadingText}>Reading card text…</Text>
-          <Text style={styles.loadingSubtext}>Looking up live market price</Text>
+          <Text style={styles.loadingSubtext}>Looking up market price</Text>
         </View>
       ) : (
         <>
           <View style={styles.placeholder}>
             <Text style={styles.placeholderEmoji}>🃏</Text>
-            <Text style={styles.placeholderText}>Point your camera at a card{'\n'}or pick a photo from your library</Text>
+            <Text style={styles.placeholderText}>
+              Point your camera at a card{"\n"}
+              or choose a photo
+            </Text>
           </View>
 
           <View style={styles.buttonGroup}>
-            <TouchableOpacity style={styles.primaryButton} onPress={openCamera} activeOpacity={0.85}>
-              <Text style={styles.primaryButtonText}>📷  Use Camera</Text>
+            <TouchableOpacity style={styles.primaryButton} onPress={openCamera}>
+              <Text style={styles.primaryButtonText}>📷 Use Camera</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryButton} onPress={openGallery} activeOpacity={0.85}>
-              <Text style={styles.secondaryButtonText}>🖼  Choose from Library</Text>
+
+            <TouchableOpacity style={styles.secondaryButton} onPress={openGallery}>
+              <Text style={styles.secondaryButtonText}>🖼 Choose from Library</Text>
             </TouchableOpacity>
           </View>
 
           <Text style={styles.tip}>
-            💡 Tip: make sure the card name and set number are clearly visible
+            💡 Make sure the card name and number are clearly visible
           </Text>
         </>
       )}
@@ -133,9 +185,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginTop: 24,
-    lineHeight: 20,
   },
-  loadingBox: { alignItems: 'center' },
+  loadingBox: {
+    alignItems: 'center',
+  },
   preview: {
     width: 200,
     height: 280,
@@ -148,5 +201,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 16,
   },
-  loadingSubtext: { color: '#666', fontSize: 14, marginTop: 4 },
+  loadingSubtext: {
+    color: '#666',
+    fontSize: 14,
+    marginTop: 4,
+  },
 });
