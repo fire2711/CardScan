@@ -10,7 +10,7 @@ async function detectCardText(base64Image, mimeType) {
     requests: [
       {
         image: { content: base64Image },
-        features: [{ type: 'TEXT_DETECTION', maxResults: 1 }],
+        features: [{ type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 }],
         imageContext: { languageHints: ['en'] },
       },
     ],
