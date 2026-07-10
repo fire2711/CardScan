@@ -4,8 +4,10 @@ import HomeScreen from './screens/HomeScreen';
 import ScanScreen from './screens/ScanScreen';
 import ResultScreen from './screens/ResultScreen';
 import HistoryScreen from './screens/HistoryScreen';
+import HistoryDetailScreen from './screens/HistoryDetailScreen';
 import CollectionScreen from './screens/CollectionScreen';
 import EditCardScreen from './screens/EditCardScreen';
+
 const Stack = createNativeStackNavigator();
 
 export default function App() {
@@ -20,40 +22,13 @@ export default function App() {
           contentStyle: { backgroundColor: '#0f0f0f' },
         }}
       >
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ title: 'CardScan' }}
-        />
-
-        <Stack.Screen
-          name="Scan"
-          component={ScanScreen}
-          options={{ title: 'Scan Card' }}
-        />
-
-        <Stack.Screen
-          name="Result"
-          component={ResultScreen}
-          options={{ title: 'Market Price' }}
-        />
-
-        <Stack.Screen
-          name="History"
-          component={HistoryScreen}
-          options={{ title: 'Scan History' }}
-        />
-
-        <Stack.Screen 
-        name="Collection"
-        component={CollectionScreen}
-        options={{title:'Collection'}}
-        />
-
-        <Stack.Screen
-        name="EditCard"
-        component={EditCardScreen}
-        />
+        <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'CardScan' }} />
+        <Stack.Screen name="Scan" component={ScanScreen} options={{ title: 'Scan Card' }} />
+        <Stack.Screen name="Result" component={ResultScreen} options={{ title: 'Market Price' }} />
+        <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'Scan History' }} />
+        <Stack.Screen name="HistoryDetail" component={HistoryDetailScreen} options={{ title: 'Card Details' }} />
+        <Stack.Screen name="Collection" component={CollectionScreen} options={{ title: 'Collection' }} />
+        <Stack.Screen name="EditCard" component={EditCardScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
